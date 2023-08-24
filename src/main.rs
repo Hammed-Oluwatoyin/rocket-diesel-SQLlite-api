@@ -8,9 +8,9 @@ mod schema;
 
    use diesel::prelude::*;
    use auth::BasicAuth;
-   use models::Rustacean;
+   use models::{Rustacean, NewRustacean};
    use schema::rustaceans; 
-   use rocket::serde::json::{Value, json};
+   use rocket::serde::json::{Value, json, Json};
    use::rocket::response::status;
    
    #[database("sqlite")]
@@ -25,23 +25,43 @@ async fn get_rustaceans(_auth: BasicAuth, db: DbConn) -> Value {
 }
 
 #[get("/rustaceans/<id>")]
-fn view_rustacean(id: i32, _auth: BasicAuth) -> Value {
-   json!({"id":id, "name":"John Doe", "email":"john@doe.com" })
+async fn view_rustacean(id: i32, _auth: BasicAuth, db: DbConn) -> Value {
+     db.run(move |c| {
+      let result = rustaceans::table.find(id).get_result::<Rustacean>(c).expect("failed retrieving rustacean row");
+      json!(result)
+     }).await
+   
+   
 }
 
-#[post("/rustaceans", format="json")]
-fn create_rustaceans(_auth: BasicAuth) -> Value {
-  json!({"id":3, "name":"John Doe", "email":"john@doe.com" })
+#[post("/rustaceans", format="json", data="<new_rustacean>")]
+async fn create_rustaceans(_auth: BasicAuth , db: DbConn, new_rustacean: Json<NewRustacean>) -> Value {
+db.run(|c| {
+      let result = diesel::insert_into(rustaceans::table).values(new_rustacean.into_inner()).execute(c).expect("failed inserting new rusteacean entry");
+      json!(result);
+   }).await.into()
+}
+ 
+#[put("/rustaceans/<id>", format="json", data = "<rustacean>")] 
+async fn update_rustacean(id: i32, _auth: BasicAuth , db:DbConn, rustacean: Json<Rustacean>) -> Value {
+   db.run(move |c| {
+      let result = diesel::update(rustaceans::table.find(id))
+                  .set((
+                        rustaceans::email.eq(rustacean.email.to_owned()),
+                        rustaceans::name.eq(rustacean.name.to_owned())
+                  )).execute(c).expect("failed updating rustacean entry");
+                  json!(result)
+   }).await
 }
 
-#[put("/rustaceans/<id>", format="json")]
-fn update_rustacean(id: i32, _auth: BasicAuth) -> Value {
-   json!({"id":id, "name":"John Doe", "email":"john@doe.com" })
-}
-
-#[delete("/rustaceans/<_id>")]
-fn delete_rustacean(_id: i32, _auth: BasicAuth) -> status::NoContent {
-   status::NoContent
+#[delete("/rustaceans/<id>")]
+async fn delete_rustacean(id: i32, _auth: BasicAuth, db:DbConn) -> status::NoContent {
+   db.run(move |c| {
+      diesel::delete(rustaceans::table.find(id)).execute(c).expect("failed deleitng rustacean entry");
+        status::NoContent
+   }).await
+   
+ 
 }
 
 
